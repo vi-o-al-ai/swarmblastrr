@@ -9,8 +9,8 @@ namespace Swarmblastrr.Track
     /// <summary>
     /// The level's boss: a big capsule with an HP number. The first overlap switches the game to
     /// <c>GameState.BossFight</c>; every overlap frame it drains player units at
-    /// <c>GameConfig.BossDrainRate</c> per second and loses <c>removed * UnitDamage</c> HP. At zero
-    /// HP it hides itself and the game enters the reward ramp.
+    /// <c>GameConfig.BossDrainRate</c> per second (never more than it needs to die) and loses
+    /// <c>removed * UnitDamage</c> HP. At zero HP it hides itself and the game enters the reward ramp.
     /// </summary>
     public class Boss : TrackElement
     {
@@ -61,17 +61,42 @@ namespace Swarmblastrr.Track
         }
 
         /// <summary>
-        /// Default overlap until the fight starts; afterwards the boss stays engaged until it is
-        /// consumed, so a crowd that shrinks below the contact distance cannot stall the fight.
+        /// Default overlap until the fight starts, except that the fight also begins as soon as the
+        /// crowd centre reaches the hold line. For a crowd whose radius is under half the body scale
+        /// the default front-reaches-Z rule fires after that line, and <c>ForwardLimitZ</c> never
+        /// pulls the crowd back, so it would otherwise freeze with its front inside the body. Once
+        /// the fight has started the boss stays engaged until it is consumed, so a crowd that
+        /// shrinks below the contact distance cannot stall the fight.
         /// </summary>
         public override bool Overlaps(CrowdController player)
         {
-            if (_fightStarted && !Consumed && player != null && player == _player)
+            if (player == null)
+            {
+                return false;
+            }
+
+            if (_fightStarted && !Consumed && player == _player)
             {
                 return true;
             }
 
+            if (!_fightStarted && !Consumed)
+            {
+                float dx = Mathf.Abs(player.Position.x - transform.position.x);
+                bool reachedHoldLine = player.Position.z >= HoldLineZ(player) && dx <= HalfWidth + player.Radius * 0.5f;
+                if (reachedHoldLine)
+                {
+                    return true;
+                }
+            }
+
             return base.Overlaps(player);
+        }
+
+        /// <summary>Z at which the crowd centre is held during the fight: the boss centre less half the body and half the crowd radius.</summary>
+        private float HoldLineZ(CrowdController player)
+        {
+            return Z - HoldGap - player.Radius * 0.5f;
         }
 
         /// <summary>Starts the fight on first contact, then drains the player and damages the boss.</summary>
@@ -144,7 +169,7 @@ namespace Swarmblastrr.Track
                 _fightStarted = true;
                 // Hold the crowd against the boss for the duration of the fight so it cannot run past
                 // the boss (and the reward ramp behind it) while the boss is still draining units.
-                player.ForwardLimitZ = Z - HoldGap - player.Radius * 0.5f;
+                player.ForwardLimitZ = HoldLineZ(player);
                 if (game != null)
                 {
                     game.EnterBossFight();
@@ -153,7 +178,18 @@ namespace Swarmblastrr.Track
 
             float drainRate = _config != null ? _config.BossDrainRate : DefaultDrainRate;
             int n = Mathf.Max(1, Mathf.RoundToInt(drainRate * deltaTime));
-            n = Mathf.Min(n, player.Count);
+
+            int unitDamage = 1;
+            if (game != null && game.Upgrades != null)
+            {
+                unitDamage = Mathf.Max(1, game.Upgrades.GetValueInt(UpgradeType.UnitDamage));
+            }
+
+            // Never drain more units than the boss needs to die this frame. The surplus would be
+            // lost for nothing and, if it emptied the crowd, RemoveUnits would trigger Lose before
+            // the kill is evaluated, making the outcome depend on the frame rate.
+            long needed = ((long)Hp + unitDamage - 1) / unitDamage;
+            n = (int)Math.Min(n, Math.Min(needed, (long)player.Count));
             if (n <= 0)
             {
                 return;
@@ -163,12 +199,6 @@ namespace Swarmblastrr.Track
             if (removed <= 0)
             {
                 return;
-            }
-
-            int unitDamage = 1;
-            if (game != null && game.Upgrades != null)
-            {
-                unitDamage = Mathf.Max(1, game.Upgrades.GetValueInt(UpgradeType.UnitDamage));
             }
 
             long damage = (long)removed * unitDamage;

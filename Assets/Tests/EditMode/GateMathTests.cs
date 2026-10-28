@@ -14,8 +14,8 @@ namespace Swarmblastrr.Tests
     {
         private const float ColorTolerance = 1e-4f;
 
-        private static readonly Color PositiveColor = new Color(0.25f, 0.6f, 1f);
-        private static readonly Color NegativeColor = new Color(1f, 0.3f, 0.3f);
+        private static readonly Color _positiveColor = new Color(0.25f, 0.6f, 1f);
+        private static readonly Color _negativeColor = new Color(1f, 0.3f, 0.3f);
 
         [Test]
         public void MaxCount_IsOneMillion()
@@ -197,17 +197,17 @@ namespace Swarmblastrr.Tests
         [Test]
         public void ColorFor_PositiveGate_IsBlue()
         {
-            AssertColor(PositiveColor, GateMath.ColorFor(GateOperation.Add, 5));
-            AssertColor(PositiveColor, GateMath.ColorFor(GateOperation.Multiply, 2));
+            AssertColor(_positiveColor, GateMath.ColorFor(GateOperation.Add, 5));
+            AssertColor(_positiveColor, GateMath.ColorFor(GateOperation.Multiply, 2));
         }
 
         [Test]
         public void ColorFor_NegativeGate_IsRed()
         {
-            AssertColor(NegativeColor, GateMath.ColorFor(GateOperation.Subtract, 5));
-            AssertColor(NegativeColor, GateMath.ColorFor(GateOperation.Divide, 2));
-            AssertColor(NegativeColor, GateMath.ColorFor(GateOperation.Add, 0));
-            AssertColor(NegativeColor, GateMath.ColorFor(GateOperation.Multiply, 1));
+            AssertColor(_negativeColor, GateMath.ColorFor(GateOperation.Subtract, 5));
+            AssertColor(_negativeColor, GateMath.ColorFor(GateOperation.Divide, 2));
+            AssertColor(_negativeColor, GateMath.ColorFor(GateOperation.Add, 0));
+            AssertColor(_negativeColor, GateMath.ColorFor(GateOperation.Multiply, 1));
         }
 
         [Test]
@@ -218,7 +218,7 @@ namespace Swarmblastrr.Tests
             {
                 foreach (int value in values)
                 {
-                    Color expected = GateMath.IsPositive(op, value) ? PositiveColor : NegativeColor;
+                    Color expected = GateMath.IsPositive(op, value) ? _positiveColor : _negativeColor;
                     AssertColor(expected, GateMath.ColorFor(op, value));
                 }
             }

@@ -9,7 +9,8 @@ namespace Swarmblastrr.UI
     /// Between-run shop, visible only in <see cref="GameState.Shop"/>. A dark translucent bottom
     /// panel holds one row per <see cref="UpgradeType"/> (name + current value on the left, a cost
     /// button on the right, disabled when the upgrade cannot be bought) and a large PLAY button
-    /// above it that starts the level.
+    /// floating above it that starts the level. The band between the two is left empty so the
+    /// preview crowd behind the shop stays visible.
     /// </summary>
     public class UpgradeShopUI : MonoBehaviour
     {
@@ -18,6 +19,13 @@ namespace Swarmblastrr.UI
         private const float RowSpacing = 20f;
         private const float RowTopPadding = 30f;
         private const float SideMargin = 40f;
+
+        /// <summary>
+        /// Gap between the top of the shop panel and the PLAY button. The camera in the shop
+        /// projects the preview crowd at roughly 550-900 reference px from the bottom (default
+        /// through heavily upgraded starting sizes), so the button sits above that band.
+        /// </summary>
+        private const float PlayButtonGap = 320f;
 
         private static readonly Vector2 _center = new Vector2(0.5f, 0.5f);
         private static readonly Color _panelColor = new Color(0f, 0f, 0f, 0.65f);
@@ -135,7 +143,7 @@ namespace Swarmblastrr.UI
             Button play = UiFactory.CreateButton(rootRect, "PLAY", new Vector2(560f, 170f), _playColor, OnPlayClicked);
             play.name = "PlayButton";
             UiFactory.Anchor(play.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0.5f, 0f), new Vector2(0f, PanelHeight + 40f), new Vector2(560f, 170f));
+                new Vector2(0.5f, 0f), new Vector2(0f, PanelHeight + PlayButtonGap), new Vector2(560f, 170f));
         }
 
         private void BuildRow(RectTransform panelRect, int index)

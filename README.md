@@ -211,6 +211,9 @@ orientation to portrait, and build. No platform-specific code exists yet.
 ## Honest gaps
 
 - Not yet compiled or run in Unity; the first import will probably surface small issues.
+- Only two `.meta` files are checked in (the bootstrap script and the scene, whose GUIDs the
+  scene references). Unity generates the rest on first import; commit them so GUIDs stay stable
+  across machines.
 - The edit-mode tests have been written against the source but, like the rest of the
   project, have not yet been executed inside a Unity editor.
 - `ProjectSettings/EditorBuildSettings.asset` is not committed, so the scene must be added to
