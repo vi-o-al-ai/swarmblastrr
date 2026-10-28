@@ -7,9 +7,10 @@ namespace Swarmblastrr.Core
 {
     /// <summary>
     /// Singleton that owns the game-state machine. It is wired once by <see cref="GameBootstrap"/>
-    /// through <see cref="Initialize"/>, subscribes to nothing, and is driven by the other
-    /// subsystems (track elements, UI, crowd) calling into it. Every state change goes through
-    /// <see cref="SetState"/> which raises <see cref="GameEvents.StateChanged"/>.
+    /// through <see cref="Initialize"/> and is driven by the other subsystems (track elements, UI,
+    /// crowd) calling into it. Its only subscription is <see cref="GameEvents.UpgradesChanged"/>,
+    /// used to resize the crowd shown behind the shop when a StartingUnits level is bought. Every
+    /// state change goes through <see cref="SetState"/> which raises <see cref="GameEvents.StateChanged"/>.
     /// </summary>
     [DisallowMultipleComponent]
     public class GameManager : MonoBehaviour
@@ -63,6 +64,7 @@ namespace Swarmblastrr.Core
             }
 
             Instance = null;
+            GameEvents.UpgradesChanged -= OnUpgradesChanged;
             GameEvents.ClearAll();
         }
 
@@ -89,6 +91,9 @@ namespace Swarmblastrr.Core
             Upgrades.Initialize(SaveSystem.Load());
             CurrentLevelIndex = Mathf.Max(0, Upgrades.Data.LevelIndex);
             _initialized = true;
+
+            GameEvents.UpgradesChanged -= OnUpgradesChanged;
+            GameEvents.UpgradesChanged += OnUpgradesChanged;
 
             // Let UI that was built before Initialize pick up the persisted values.
             GameEvents.RaiseCoinsChanged(Upgrades.Coins);
@@ -258,6 +263,24 @@ namespace Swarmblastrr.Core
         {
             State = next;
             GameEvents.RaiseStateChanged(next);
+        }
+
+        /// <summary>
+        /// While the shop is open the crowd behind it previews the starting size, so a StartingUnits
+        /// purchase is reflected immediately (StartLevel re-applies it anyway as a safety net).
+        /// </summary>
+        private void OnUpgradesChanged()
+        {
+            if (State != GameState.Shop || Player == null || Upgrades == null)
+            {
+                return;
+            }
+
+            int startingUnits = Upgrades.GetValueInt(UpgradeType.StartingUnits);
+            if (startingUnits != Player.Count)
+            {
+                Player.SetCount(startingUnits);
+            }
         }
 
         private bool EnsureInitialized(string caller)

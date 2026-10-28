@@ -11,6 +11,8 @@ namespace Swarmblastrr.Controls
     /// delta. One full screen width of drag moves the crowd roughly <c>2 * LaneHalfWidth *
     /// Sensitivity</c> world units. Runs before gameplay scripts so <c>CrowdController.Update</c>
     /// sees this frame's value. Works with either the Input System package or the legacy manager.
+    /// Only produces a delta while a run is in progress (Running, BossFight, RewardRamp) so drags on
+    /// the shop or result UI never move the crowd.
     /// </summary>
     [DefaultExecutionOrder(-100)]
     public class SwipeInput : MonoBehaviour
@@ -20,10 +22,10 @@ namespace Swarmblastrr.Controls
         /// <summary>Drag multiplier: one screen width of drag ≈ 2 * LaneHalfWidth * Sensitivity world units.</summary>
         public float Sensitivity = 1f;
 
-        /// <summary>True while a pointer (touch or mouse button) is held down.</summary>
+        /// <summary>True while a pointer (touch or mouse button) is held down during a run.</summary>
         public bool IsPressed { get; private set; }
 
-        /// <summary>World-space lateral delta accumulated this frame; 0 when not dragging.</summary>
+        /// <summary>World-space lateral delta accumulated this frame; 0 when not dragging or outside a run.</summary>
         public float DeltaX { get; private set; }
 
         /// <summary>Pointer x mapped to -1..1 across the screen, for debugging.</summary>
@@ -44,7 +46,9 @@ namespace Swarmblastrr.Controls
                 NormalizedScreenX = Mathf.Clamp(pointerX / screenWidth * 2f - 1f, -1f, 1f);
             }
 
-            if (!hasPointer || !pressed)
+            // Outside a run the pointer belongs to the UI: treat it as released so a drag across the
+            // shop / result panel (or a press that started on PLAY) cannot offset the crowd.
+            if (!hasPointer || !pressed || !IsInRun())
             {
                 IsPressed = false;
                 DeltaX = 0f;
@@ -68,6 +72,18 @@ namespace Swarmblastrr.Controls
         {
             IsPressed = false;
             DeltaX = 0f;
+        }
+
+        private static bool IsInRun()
+        {
+            GameManager game = GameManager.Instance;
+            if (game == null)
+            {
+                return false;
+            }
+
+            GameState state = game.State;
+            return state == GameState.Running || state == GameState.BossFight || state == GameState.RewardRamp;
         }
 
         private static float ResolveLaneHalfWidth()

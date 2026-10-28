@@ -221,7 +221,8 @@ namespace Swarmblastrr.UI
 
         /// <summary>
         /// Recovers the gate value from the (before, after) counts so the label matches the gate.
-        /// Falls back to the raw delta when clamping makes the operation ambiguous.
+        /// Falls back to the raw signed delta whenever clamping or integer division makes the gate
+        /// value ambiguous, so the text is never wrong even if it is less specific than the gate.
         /// </summary>
         private static void DescribeGate(GateOperation op, int before, int after, out GateOperation labelOp, out int value)
         {
@@ -236,19 +237,29 @@ namespace Swarmblastrr.UI
                     value = Mathf.Max(0, before - after);
                     return;
                 case GateOperation.Multiply:
-                    if (before > 0 && after >= before)
+                    // Exact only when after == before * value and the product was not clamped at
+                    // MaxCount (a clamped result is consistent with several multipliers).
+                    if (before > 0 && after >= before && after < GateMath.MaxCount && after % before == 0)
                     {
                         labelOp = GateOperation.Multiply;
-                        value = Mathf.Max(1, Mathf.RoundToInt(after / (float)before));
+                        value = after / before;
                         return;
                     }
                     break;
                 case GateOperation.Divide:
                     if (after > 0 && before >= after)
                     {
-                        labelOp = GateOperation.Divide;
-                        value = Mathf.Max(1, Mathf.RoundToInt(before / (float)after));
-                        return;
+                        // Integer division maps a range of divisors onto the same result
+                        // (before / v == after for every v in [divisorMin, divisorMax]); only label the
+                        // gate when exactly one divisor fits, e.g. 3 / 2 == 1 could be ÷2 or ÷3.
+                        int divisorMax = before / after;
+                        int divisorMin = before / (after + 1) + 1;
+                        if (divisorMin == divisorMax)
+                        {
+                            labelOp = GateOperation.Divide;
+                            value = divisorMax;
+                            return;
+                        }
                     }
                     break;
             }

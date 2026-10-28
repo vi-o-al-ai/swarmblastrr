@@ -215,7 +215,15 @@ namespace Swarmblastrr.UI
                 SetCoins(_game.Upgrades.Coins);
             }
 
-            SetLevel(_game.CurrentLevelIndex);
+            // GameManager.Win advances CurrentLevelIndex before entering Won, so while the result
+            // screen is up the index already points at the next level. Show the level just played.
+            int shownLevel = _game.CurrentLevelIndex;
+            if (_game.State == GameState.Won)
+            {
+                shownLevel = Mathf.Max(0, shownLevel - 1);
+            }
+
+            SetLevel(shownLevel);
         }
 
         private void SetCount(int count)

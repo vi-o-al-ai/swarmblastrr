@@ -26,6 +26,9 @@ namespace Swarmblastrr.Track
         private const float LabelHeight = 8.2f;
         private const float LabelCharacterSize = 0.24f;
         private const float DefaultDrainRate = 60f;
+
+        /// <summary>Gap kept between the boss centre and the crowd centre while the crowd is held, on top of half the crowd radius.</summary>
+        private const float HoldGap = BodyScale * 0.5f;
         private static readonly Color _defaultBodyColor = new Color(0.85f, 0.7f, 0.45f);
 
         /// <summary>Hit points at full health.</summary>
@@ -55,6 +58,20 @@ namespace Swarmblastrr.Track
             _fightStarted = false;
             _lastTickFrame = -1;
             RefreshLabel();
+        }
+
+        /// <summary>
+        /// Default overlap until the fight starts; afterwards the boss stays engaged until it is
+        /// consumed, so a crowd that shrinks below the contact distance cannot stall the fight.
+        /// </summary>
+        public override bool Overlaps(CrowdController player)
+        {
+            if (_fightStarted && !Consumed && player != null && player == _player)
+            {
+                return true;
+            }
+
+            return base.Overlaps(player);
         }
 
         /// <summary>Starts the fight on first contact, then drains the player and damages the boss.</summary>
@@ -125,6 +142,9 @@ namespace Swarmblastrr.Track
             if (!_fightStarted)
             {
                 _fightStarted = true;
+                // Hold the crowd against the boss for the duration of the fight so it cannot run past
+                // the boss (and the reward ramp behind it) while the boss is still draining units.
+                player.ForwardLimitZ = Z - HoldGap - player.Radius * 0.5f;
                 if (game != null)
                 {
                     game.EnterBossFight();
@@ -160,6 +180,7 @@ namespace Swarmblastrr.Track
             {
                 Consumed = true;
                 HideVisuals();
+                player.ForwardLimitZ = float.PositiveInfinity;
                 if (game != null)
                 {
                     game.EnterRewardRamp();

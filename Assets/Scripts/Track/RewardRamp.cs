@@ -63,7 +63,7 @@ namespace Swarmblastrr.Track
             UnitsPerTile = Mathf.Max(1, unitsPerTile);
         }
 
-        /// <summary>Lets the crowd run on; wins once its centre passes the end of the reachable tile.</summary>
+        /// <summary>Lets the crowd run on; once the boss is dead, wins when its centre passes the end of the reachable tile.</summary>
         public override void OnCrowdOverlap(CrowdController player, float deltaTime)
         {
             if (Consumed || player == null)
@@ -131,6 +131,16 @@ namespace Swarmblastrr.Track
                 return;
             }
 
+            // The boss drains the crowd without stopping it, so the crowd can already be several
+            // tiles up the ramp while the boss is alive. Winning now would skip the RewardRamp state
+            // and bank a multiplier mid-fight; keep running until the boss has died and
+            // GameManager.EnterRewardRamp() has fired (or the crowd is wiped out and Lose() ends the run).
+            GameManager game = GameManager.Instance;
+            if (game != null && game.State == GameState.BossFight)
+            {
+                return;
+            }
+
             int tile = ReachableTile(player.Count);
             float tileEndZ = Z + (tile + 1) * Mathf.Max(0.1f, TileLength);
             if (player.Position.z < tileEndZ)
@@ -141,7 +151,6 @@ namespace Swarmblastrr.Track
             Consumed = true;
             player.IsRunning = false;
 
-            GameManager game = GameManager.Instance;
             if (game != null)
             {
                 game.Win(MultiplierForTile(tile));

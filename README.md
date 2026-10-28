@@ -21,8 +21,9 @@ multiplies the coins you earn. Between runs you spend coins on permanent upgrade
   without thousands of GameObjects.
 - Deterministic procedural levels (`LevelGenerator`), a tiny meta loop (coins, three
   permanent upgrades, JSON save file) and legacy uGUI screens (HUD, shop, result).
-- Edit-mode tests for all the pure math (gates, upgrades, economy, saves, level generation,
-  crowd simulation).
+- An edit-mode test assembly (`Swarmblastrr.Tests.EditMode`, NUnit) with seven test classes
+  covering the pure math (gates, upgrades, economy, saves, level generation, crowd simulation
+  and layout). See [Running the tests](#running-the-tests).
 
 ## Requirements
 
@@ -98,7 +99,7 @@ Assets/
     Controls/  SwipeInput
   Resources/Shaders/            CrowdInstanced, Solid, SolidTransparent (built-in pipeline)
   Editor/                       Swarmblastrr.Editor assembly: DemoSceneBuilder (menu items)
-  Tests/EditMode/               Swarmblastrr.Tests.EditMode assembly (NUnit)
+  Tests/EditMode/               Swarmblastrr.Tests.EditMode assembly (NUnit; seven test classes)
   Scenes/Main.unity             one GameObject: Bootstrap (GameBootstrap)
 docs/ARCHITECTURE.md            the contract everything above is written against
 ```
@@ -170,13 +171,24 @@ Other places to tune:
 
 ## Running the tests
 
-1. **Window → General → Test Runner**.
-2. Select the **EditMode** tab and press **Run All**.
+`Assets/Tests/EditMode/` holds seven NUnit edit-mode test classes in the
+`Swarmblastrr.Tests.EditMode` assembly (editor-only; references `Swarmblastrr.Runtime`,
+Collections, Mathematics and Burst). They cover only pure code, so no scene or `GameManager`
+is needed:
 
-The tests cover only pure code (no scene, no `GameManager`): `GateMathTests`,
-`UpgradeMathTests`, `EconomyTests`, `SaveDataTests` (through an in-memory `ISaveStore`),
-`LevelGeneratorTests`, `CrowdSimulationTests` (500 units × 120 steps: no NaN, stays in lane,
-no overlap) and `CrowdLayoutTests`.
+| Test class | What it pins down |
+|---|---|
+| `GateMathTests` | every gate operation, clamping at 0 and `MaxCount`, divide-by-zero, labels |
+| `UpgradeMathTests` | geometric cost curve, linear value curve, max level, no overflow |
+| `EconomyTests` | win and lose rewards, income multiplier, clamping |
+| `SaveDataTests` | round trip through an in-memory `ISaveStore`, corrupt JSON, `EnsureArrays` |
+| `LevelGeneratorTests` | determinism, ascending Z, one boss then one ramp, length, difficulty growth |
+| `CrowdSimulationTests` | 500 units x 120 steps: no NaN, stays in lane, no overlap, grow/shrink, dispose |
+| `CrowdLayoutTests` | distinct spawn offsets, radius grows with sqrt(n) |
+
+Open **Window → General → Test Runner**, select the **EditMode** tab and press **Run All**.
+The crowd tests schedule real Burst jobs, so the first run compiles them and takes a few
+seconds longer.
 
 ## Building for a device
 
@@ -199,6 +211,8 @@ orientation to portrait, and build. No platform-specific code exists yet.
 ## Honest gaps
 
 - Not yet compiled or run in Unity; the first import will probably surface small issues.
+- The edit-mode tests have been written against the source but, like the rest of the
+  project, have not yet been executed inside a Unity editor.
 - `ProjectSettings/EditorBuildSettings.asset` is not committed, so the scene must be added to
   Build Settings once (the Create Demo Scene menu item does it).
 - Lighting is flat and runtime-generated; there is no baked data and no post-processing.

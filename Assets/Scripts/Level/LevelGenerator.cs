@@ -11,11 +11,12 @@ namespace Swarmblastrr.Level
     /// </summary>
     /// <remarks>
     /// Difficulty is monotone in the level index by construction: the good side of a gate pair
-    /// is <c>Add (5 + 2 * level) .. (7 + 2 * level)</c>, so the smallest value at level N + 1
-    /// is never below the largest at level N; multiply gates and enemy crowds sit at fixed pair
-    /// indices; and a newly unlocked enemy is always followed by a multiply gate that more than
-    /// compensates for it. Randomness only decides exact Add values, the bad side of each pair,
-    /// which side is left or right, and the spacing between elements.
+    /// is <c>Add (5 + 2 * level) .. (7 + 2 * level)</c>, capped at <see cref="GateMath.MaxCount"/>,
+    /// so the smallest value at level N + 1 is never below the largest at level N; multiply gates
+    /// and enemy crowds sit at fixed pair indices; and a newly unlocked enemy is always followed
+    /// by a multiply gate that more than compensates for it. Randomness only decides exact Add
+    /// values, the bad side of each pair, which side is left or right, and the spacing between
+    /// elements.
     /// </remarks>
     public static class LevelGenerator
     {
@@ -135,7 +136,13 @@ namespace Swarmblastrr.Level
             else
             {
                 goodOp = GateOperation.Add;
-                goodValue = BaseAddValue + AddGrowthPerLevel * levelIndex + rng.Next(0, AddSpread + 1);
+
+                // Long arithmetic: a hand-edited or corrupt save can hold any int level index, and
+                // AddGrowthPerLevel * levelIndex wraps negative near int.MaxValue in 32-bit math. A
+                // negative Add would wipe the crowd at the first gate, so clamp to GateMath.MaxCount
+                // (which GateMath.Apply clamps the count to anyway).
+                long addValue = BaseAddValue + (long)AddGrowthPerLevel * levelIndex + rng.Next(0, AddSpread + 1);
+                goodValue = (int)Math.Min(addValue, GateMath.MaxCount);
             }
 
             GateOperation badOp;

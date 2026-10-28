@@ -143,8 +143,10 @@ public void RestartLevel();        // From Won/Lost → EnterShop() (level index
 ```
 Rules: `StartLevel` must set `Player.IsRunning = true` and call `LevelRunner.Begin(...)`. Every state
 change goes through a private `SetState(GameState)` that raises `GameEvents.StateChanged`.
-`Win` and `Lose` must both be idempotent (ignore if State is already Won/Lost). Subscribes to
-nothing; other systems call into it. `OnDestroy` → `GameEvents.ClearAll()` and clears `Instance`.
+`Win` and `Lose` must both be idempotent (ignore if State is already Won/Lost). Its only
+subscription is `GameEvents.UpgradesChanged`: while `State == Shop` it re-applies
+`Upgrades.GetValueInt(StartingUnits)` to the player crowd so the preview behind the shop and the HUD
+update the moment a level is bought. `OnDestroy` → unsubscribe, `GameEvents.ClearAll()`, clear `Instance`.
 
 ### `GameBootstrap.cs` — `MonoBehaviour`, the only thing a scene needs
 ```csharp
@@ -192,7 +194,8 @@ public struct CrowdSimParams
 {
     public float DeltaTime;
     public float UnitRadius;
-    public float LaneHalfWidth;        // local clamp: |x| <= LaneHalfWidth - UnitRadius. Enemies pass float.MaxValue.
+    public float LaneHalfWidth;        // local clamp: |x - LaneCenterX| <= LaneHalfWidth - UnitRadius. Enemies pass float.MaxValue.
+    public float LaneCenterX;          // lane centre in local x (0 for enemies/tests; the player passes -centreX so the walls stay fixed in world space)
     public float SeparationStrength;
     public float CohesionStrength;
     public float Damping;
@@ -259,6 +262,7 @@ public static Mesh DefaultUnitMesh();   // Capsule.fbx builtin
 public int Count { get; }               // logical count, may exceed MaxSimulatedUnits
 public bool IsRunning { get; set; }     // moves forward along +Z when true
 public float TargetX { get; set; }      // desired centre x, clamped to the lane by the controller
+public float ForwardLimitZ { get; set; } // crowd centre never advances past this Z while running (never moves backwards); +Infinity = no limit; reset by ResetTo
 public Vector3 Position => transform.position;
 public float FrontZ { get; }            // Position.z + Radius
 public float Radius { get; }            // CrowdLayout.Radius(min(Count, MaxSimulated), spacing)
@@ -345,7 +349,10 @@ dt))`, `n = min(n, player.Count)`; `removed = player.RemoveUnits(n)`; `Hp -= rem
 unitDamage` where `unitDamage = GameManager.Instance.Upgrades.GetValueInt(UpgradeType.UnitDamage)`;
 raise `GameEvents.BossDamaged(Hp, MaxHp)`. `Hp <= 0` → `Consumed = true`, hide visuals,
 `GameManager.Instance.EnterRewardRamp()`. Player reaching 0 is handled by the controller (Lose).
-`Overlaps` uses the default plus `HalfWidth = LaneHalfWidth` (bosses span the lane).
+`Overlaps` uses the default plus `HalfWidth = LaneHalfWidth` (bosses span the lane) until the fight
+starts; from then on it returns true until the boss is consumed. On the first overlap the boss sets
+`player.ForwardLimitZ = Z - BodyScale/2 - player.Radius/2` so the crowd is held against it for the
+whole fight, and clears it (`float.PositiveInfinity`) when it dies.
 
 ### `RewardRamp.cs` — `: TrackElement`
 ```csharp
@@ -642,4 +649,68 @@ NUnit edit-mode tests. Must not depend on a scene or on `GameManager`.
 ---
 
 ## Deviations
-(Record any intentional divergence from this contract here, with the reason.)
+Intentional divergences from the listings above, with the reason. Public-surface additions are
+also folded into the listings; this section is the audit trail.
+
+**Public-surface additions**
+- `CrowdSimParams.LaneCenterX` (float, default 0). The player crowd simulates in a frame centred on
+  its own transform, so a symmetric `|x| <= LaneHalfWidth` clamp would squeeze the crowd to the
+  near-wall distance whenever it steers off centre. The player passes `-centreX`; enemies and tests
+  leave it 0, so the documented semantics are unchanged for them.
+- `CrowdController.ForwardLimitZ` (float, default +Infinity). Needed so the boss can hold the crowd
+  during the fight; without it the crowd ran straight past the boss and the reward ramp while the
+  boss was still draining units. The clamp never moves the crowd backwards and `ResetTo` clears it.
+- `Boss.Overlaps` override: once the fight has started it stays true until the boss is consumed.
+  Otherwise a crowd held short of the boss that shrinks below the contact distance would stall the
+  fight forever.
+- `GameManager` subscribes to `GameEvents.UpgradesChanged` (contract said "subscribes to nothing")
+  to resize the preview crowd behind the shop when StartingUnits is bought. `StartLevel` still
+  re-applies the value as a safety net.
+- `FileSaveStore.FilePath` (get-only) and a `MemorySaveStore(string initialJson)` convenience
+  constructor, both additive; used by the editor "Reset Save Data" menu and the tests.
+- `TrackVisuals` has four `internal` helpers (`CreatePrimitive`, `CubeMesh`, `CapsuleMesh`,
+  `CylinderMesh`) shared by the track elements. Not public.
+
+**Behavioural extensions (signatures unchanged)**
+- `GameManager.Win()/Lose()` are also ignored (with a warning) in `Boot`/`Shop`, so a stray call
+  cannot credit coins or show the result screen when no run is active. `Win` additionally stops the
+  player and the runner, as `Lose` does.
+- `GameBootstrap` reuses an existing untagged `Camera` (tagging it MainCamera) before creating one,
+  and when it creates the directional light it also sets a flat mid-grey ambient so the half-Lambert
+  shaders are not black in an empty scene.
+- `CameraFollow` looks at `(0, target.y, target.z + LookAheadZ)` rather than the target's x, so the
+  view does not swing as the crowd strafes; x stays pinned at 0 as the contract intends.
+- `Boss` and `RewardRamp` keep evaluating in `LateUpdate` after their first overlap (gated on
+  `player.IsRunning`, with a frame guard). `LevelRunner` only polls elements within
+  `[playerZ-15, playerZ+60]`, so a 20-unit ramp would otherwise drop out of polling before its far
+  tiles could be reached, and a crowd could outrun a boss by 15 units.
+- `RewardRamp` does nothing while `State == BossFight`, so the multiplier can never be banked with
+  the boss alive.
+- `Gate.Overlaps` uses a half-open rule at the lane centre line (the left gate does not own x = 0),
+  so a crowd that never steered triggers exactly one gate of the pair.
+- `FlockJob` separation weight is `min(2r/dist - 1, 4)` (inverse, capped) instead of a linear
+  falloff; a replay with the default tunables showed the linear version packs 500+ units tighter
+  than the `UnitRadius * 0.5` minimum the tests require. Cohesion is a spring inside one unit of
+  distance and a constant-magnitude pull beyond, so large crowds are not crushed into the centre.
+- `CrowdSimulation.Schedule` clamps `DeltaTime` to `[0, 0.05]` and `FlockJob` caps per-step
+  displacement to one interaction diameter so a frame hitch cannot tunnel units through each other
+  or the lane walls.
+- `FloatingText` reconstructs the gate value from `(before, after)` carried by `GateHit`, since the
+  event does not carry the gate's value; ambiguous cases (clamped to 0 or `MaxCount`) show the raw
+  delta.
+- `SwipeInput.DeltaX` is also 0 while dragging outside a run (Boot/Shop/Won/Lost), so the preview
+  crowd cannot be steered from behind the shop.
+- `LevelGenerator` uses a narrower "good side" band `(5 + 2L) .. (7 + 2L)` and puts multiply gates
+  at fixed pair indices (4, 7, 10) rather than randomly, so expected units, boss HP and enemy counts
+  grow monotonically with level and the difficulty test cannot be flaky by seed.
+- `Economy` and `UpgradeMath` clamp negative inputs to 0 and saturate at `int.MaxValue` instead of
+  overflowing. The tests assert "positive and monotonic", not the exact saturation value.
+- `TrackVisuals.CreateFloor/CreateRails` extend 12 units behind Z = 0 so the start has ground, and the
+  gate wall gets an opaque frame and sill so its ZWrite-off bottom edge does not z-fight the floor.
+
+**Contract tensions resolved as written**
+- `CrowdJobs.cs` holds three types because the contract places them there (overrides
+  one-type-per-file).
+- `CrowdController` references `Core`, `Controls` and `Track`, and `Boss` references `Core`,
+  `Crowd` and `Meta`, because their contract signatures require it (overrides the
+  "at most two other namespaces" rule).

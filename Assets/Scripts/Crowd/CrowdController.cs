@@ -25,6 +25,7 @@ namespace Swarmblastrr.Crowd
         private int _count;
         private float _targetX;
         private bool _isRunning;
+        private float _forwardLimitZ = float.PositiveInfinity;
 
         /// <summary>Logical unit count; may exceed <c>GameConfig.MaxSimulatedUnits</c>.</summary>
         public int Count => _count;
@@ -34,6 +35,17 @@ namespace Swarmblastrr.Crowd
         {
             get => _isRunning;
             set => _isRunning = value;
+        }
+
+        /// <summary>
+        /// The crowd centre never advances past this Z while running (it is never pulled backwards).
+        /// The boss sets it to hold the crowd during the fight and clears it when it dies;
+        /// <see cref="ResetTo"/> clears it. <c>float.PositiveInfinity</c> means no limit.
+        /// </summary>
+        public float ForwardLimitZ
+        {
+            get => _forwardLimitZ;
+            set => _forwardLimitZ = float.IsNaN(value) ? float.PositiveInfinity : value;
         }
 
         /// <summary>Desired centre x. The setter clamps it so the crowd stays inside the lane.</summary>
@@ -113,6 +125,7 @@ namespace Swarmblastrr.Crowd
             transform.position = position;
             _isRunning = false;
             _targetX = 0f;
+            _forwardLimitZ = float.PositiveInfinity;
             if (_simulation != null)
             {
                 _simulation.SetCount(0);
@@ -208,7 +221,14 @@ namespace Swarmblastrr.Crowd
             pos.x = Mathf.Clamp(pos.x, -_config.LaneHalfWidth, _config.LaneHalfWidth);
             if (_isRunning)
             {
-                pos.z += _config.ForwardSpeed * dt;
+                float nextZ = pos.z + _config.ForwardSpeed * dt;
+                if (nextZ > _forwardLimitZ)
+                {
+                    // Stop at the limit, but never move the crowd backwards if it is already past it.
+                    nextZ = Mathf.Max(pos.z, _forwardLimitZ);
+                }
+
+                pos.z = nextZ;
             }
 
             transform.position = pos;
